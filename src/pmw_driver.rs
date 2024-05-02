@@ -21,13 +21,13 @@ pub type PmwMiso = Pin<'A', 6>;
 pub type PmwMosi = Pin<'A', 7, Alternate>;
 pub type PmwSpi = Spi<SPI1, Spi1NoRemap, (PmwSck, PmwMiso, PmwMosi), u8>;
 
-pub struct Driver {
+pub struct PmwDriver {
     spi: PmwSpi,
     chip_enable_pin: PmwCe,
     delay: SysDelay,
 }
 
-impl Driver {
+impl PmwDriver {
     pub fn new(
         pmw_ce: PmwCe,
         pmw_sck: PmwSck,

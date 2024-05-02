@@ -3,8 +3,10 @@
 #![feature(alloc_error_handler)]
 
 pub mod constants;
-pub mod driver;
+pub mod pmw_driver;
+pub mod usb_driver;
 pub mod motion_data;
+pub mod mouse_report;
 
 extern crate alloc;
 
@@ -21,7 +23,7 @@ use crate::constants::{
     INIT_DELAY, PMW_3360_FIRMWARE, REG_POWER_UP_RESET, READ_ADDRESS_DATA_DELAY, SROM_DOWNLOAD_DELAY,
     SROM_ENABLE_DELAY,
 };
-use crate::driver::Driver;
+use crate::pmw_driver::PmwDriver;
 use cortex_m_rt::entry;
 use fugit::{Duration, Hertz, HertzU32, MicrosDurationU32};
 use rtt_target::{rprint, rprintln, rtt_init_print};
@@ -32,10 +34,8 @@ use stm32f1xx_hal::rcc::Clocks;
 use stm32f1xx_hal::spi::Spi1NoRemap;
 use stm32f1xx_hal::time::Hz;
 use stm32f1xx_hal::timer::{SysDelay, Timer};
-use stm32f1xx_hal::{
-    prelude::*,
-    spi::{Mode, Phase, Polarity, Spi},
-};
+use stm32f1xx_hal::{prelude::*, spi::{Mode, Phase, Polarity, Spi}, usb};
+use crate::usb_driver::UsbDriver;
 
 type PmwSpi =
     Spi<SPI1, Spi1NoRemap, (Pin<'A', 5, Alternate>, Pin<'A', 6>, Pin<'A', 7, Alternate>), u8>;
@@ -43,7 +43,6 @@ type PmwSpi =
 #[entry]
 fn main() -> ! {
     rtt_init_print!();
-
     unsafe {
         let start = cortex_m_rt::heap_start() as usize;
         ALLOCATOR.init(start, 16384);
@@ -58,7 +57,7 @@ fn main() -> ! {
     let mut gpioa = dp.GPIOA.split();
 
     let clocks = rcc.cfgr.freeze(&mut flash.acr);
-    let mut driver = Driver::new(
+    let mut pmw_driver = PmwDriver::new(
         gpioa.pa4.into_push_pull_output(&mut gpioa.crl),
         gpioa.pa5.into_alternate_push_pull(&mut gpioa.crl),
         gpioa.pa6.into_floating_input(&mut gpioa.crl),
@@ -68,12 +67,20 @@ fn main() -> ! {
         cp.SYST,
         clocks,
     );
-    driver.init();
+    pmw_driver.init();
+
+    let usb_peripheral = usb::Peripheral {
+        usb: dp.USB,
+        pin_dm: gpioa.pa11,
+        pin_dp: gpioa.pa12,
+    };
+
+    let usb_driver = UsbDriver::new(usb_peripheral);
 
     let mut position_x = 0f32;
     let mut position_y = 0f32;
 
-    driver.enter_loop(|motion_data| {
+    pmw_driver.enter_loop(|motion_data| {
         position_x += motion_data.delta_x as f32 / 65536f32;
         position_y += motion_data.delta_y as f32 / 65536f32;
 
