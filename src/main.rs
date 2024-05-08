@@ -7,14 +7,17 @@ pub mod pmw_driver;
 pub mod usb_driver;
 pub mod motion_data;
 pub mod mouse_report;
+pub mod button_driver;
 
 extern crate alloc;
 
 use alloc::borrow::ToOwned;
+use alloc::rc::Rc;
 use alloc::vec;
 use alloc::vec::Vec;
 use alloc_cortex_m::CortexMHeap;
 use core::alloc::Layout;
+use core::cell::RefCell;
 use cortex_m::asm::delay;
 use cortex_m::peripheral::SYST;
 use panic_rtt_target as _;
@@ -35,6 +38,7 @@ use stm32f1xx_hal::spi::Spi1NoRemap;
 use stm32f1xx_hal::time::Hz;
 use stm32f1xx_hal::timer::{SysDelay, Timer};
 use stm32f1xx_hal::{prelude::*, spi::{Mode, Phase, Polarity, Spi}, usb};
+use crate::motion_data::MotionData;
 use crate::usb_driver::UsbDriver;
 
 type PmwSpi =
@@ -56,7 +60,15 @@ fn main() -> ! {
     let mut afio = dp.AFIO.constrain();
     let mut gpioa = dp.GPIOA.split();
 
-    let clocks = rcc.cfgr.freeze(&mut flash.acr);
+    let clocks = rcc.cfgr.use_hse(HertzU32::MHz(8))
+        .sysclk(HertzU32::MHz(72))
+        .hclk(HertzU32::MHz(72))
+        .pclk1(HertzU32::MHz(36))
+        .pclk2(HertzU32::MHz(72))
+        .freeze(&mut flash.acr);
+
+    let delay = Rc::new(RefCell::new(cp.SYST.delay(&clocks)));
+
     let mut pmw_driver = PmwDriver::new(
         gpioa.pa4.into_push_pull_output(&mut gpioa.crl),
         gpioa.pa5.into_alternate_push_pull(&mut gpioa.crl),
@@ -64,27 +76,38 @@ fn main() -> ! {
         gpioa.pa7.into_alternate_push_pull(&mut gpioa.crl),
         dp.SPI1,
         &mut afio.mapr,
-        cp.SYST,
+        delay.clone(),
         clocks,
     );
     pmw_driver.init();
 
+    let usb_dm = gpioa.pa11.into_push_pull_output(&mut gpioa.crh);
+    let mut usb_dp = gpioa.pa12.into_push_pull_output(&mut gpioa.crh);
+    usb_dp.set_low();
+    delay.borrow_mut().delay(MicrosDurationU32::millis(10));
+
     let usb_peripheral = usb::Peripheral {
         usb: dp.USB,
-        pin_dm: gpioa.pa11,
-        pin_dp: gpioa.pa12,
+        pin_dm: usb_dm.into_floating_input(&mut gpioa.crh),
+        pin_dp: usb_dp.into_floating_input(&mut gpioa.crh),
     };
 
-    let usb_driver = UsbDriver::new(usb_peripheral);
+    let mut usb_driver = UsbDriver::new(usb_peripheral);
+    usb_driver.poll();
 
-    let mut position_x = 0f32;
-    let mut position_y = 0f32;
-
+    // loop {
+    //     usb_driver.poll();
+    //     usb_driver.handle_motion_data(MotionData{
+    //         delta_x: 1,
+    //         delta_y: 0,
+    //     })
+    // }
     pmw_driver.enter_loop(|motion_data| {
-        position_x += motion_data.delta_x as f32 / 65536f32;
-        position_y += motion_data.delta_y as f32 / 65536f32;
-
-        rprintln!("{:?} {:?}", position_x, position_y);
+        // position_x += motion_data.delta_x as f32 / 65536f32;
+        // position_y += motion_data.delta_y as f32 / 65536f32;
+        rprintln!("{:?}", motion_data);
+        usb_driver.poll();
+        usb_driver.handle_motion_data(motion_data);
     });
 }
 

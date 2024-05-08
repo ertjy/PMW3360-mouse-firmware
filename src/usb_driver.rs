@@ -14,25 +14,32 @@ const USB_PROTOCOL_HID: u8 = 0x02;
 const HID_VERSION: [u8; 2] = [0x10, 0x01];
 const POLL_TIME_MS: u8 = 5;
 
+static mut USB_BUS_ALLOCATOR: Option<UsbBusAllocator<UsbBus<usb::Peripheral>>> = None;
+
 pub struct UsbDriver<'a> {
     usb_device: UsbDevice<'a, UsbBus<usb::Peripheral>>,
-    usb_bus: UsbBusAllocator<UsbBus<usb::Peripheral>>,
     hid: Hid<'a, MouseReport, UsbBus<usb::Peripheral>>,
 }
 
 impl<'a> UsbDriver<'a> {
     pub fn new(usb_peripheral: usb::Peripheral) -> Self {
-        let usb_bus = UsbBus::new(usb_peripheral);
-        let hid = Hid::new(&usb_bus, POLL_TIME_MS);
-        let usb_device = UsbDeviceBuilder::new(&usb_bus, UsbVidPid(0x16c0, 0x27dd))
-            .manufacturer("Fake company")
-            .product("IDK MOUSE")
-            .serial_number("rev 3")
-            .device_class(USB_CLASS_HID)
-            .build();
+        unsafe {
+            let _ = USB_BUS_ALLOCATOR.insert(UsbBus::new(usb_peripheral));
+        }
+
+        let hid =unsafe {
+            Hid::new(USB_BUS_ALLOCATOR.as_ref().unwrap(), POLL_TIME_MS)
+        };
+        let usb_device = unsafe {
+            UsbDeviceBuilder::new(USB_BUS_ALLOCATOR.as_ref().unwrap(), UsbVidPid(0x16c0, 0x27dd))
+                .manufacturer("Fake company")
+                .product("IDK MOUSE")
+                .serial_number("rev 3")
+                .device_class(USB_CLASS_HID)
+                .build()
+        };
 
         Self {
-            usb_bus,
             hid,
             usb_device,
         }

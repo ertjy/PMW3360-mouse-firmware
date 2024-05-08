@@ -1,6 +1,8 @@
 use alloc::borrow::ToOwned;
+use alloc::rc::Rc;
 use alloc::vec;
 use alloc::vec::Vec;
+use core::cell::RefCell;
 use cortex_m::delay::Delay;
 use cortex_m::peripheral::SYST;
 use cortex_m::prelude::_embedded_hal_blocking_spi_Transfer;
@@ -24,7 +26,7 @@ pub type PmwSpi = Spi<SPI1, Spi1NoRemap, (PmwSck, PmwMiso, PmwMosi), u8>;
 pub struct PmwDriver {
     spi: PmwSpi,
     chip_enable_pin: PmwCe,
-    delay: SysDelay,
+    delay: Rc<RefCell<SysDelay>>,
 }
 
 impl PmwDriver {
@@ -35,7 +37,7 @@ impl PmwDriver {
         pmw_mosi: PmwMosi,
         spi1: SPI1,
         mapr: &mut MAPR,
-        syst: SYST,
+        delay: Rc<RefCell<SysDelay>>,
         clocks: Clocks,
     ) -> Self {
         let pins = (pmw_sck, pmw_miso, pmw_mosi);
@@ -47,8 +49,6 @@ impl PmwDriver {
 
         let spi = Spi::spi1(spi1, pins, mapr, spi_mode, HertzU32::kHz(10), clocks);
 
-        let delay = Timer::syst(syst, &clocks).delay();
-
         Self {
             spi,
             chip_enable_pin: pmw_ce,
@@ -58,7 +58,7 @@ impl PmwDriver {
 
     pub fn init(&mut self) {
         self.chip_enable_pin.set_low();
-        self.delay.delay(INIT_DELAY);
+        self.delay.borrow_mut().delay(INIT_DELAY);
         self.chip_enable_pin.set_high();
 
         self.pmw_write(
@@ -66,7 +66,7 @@ impl PmwDriver {
             vec![0x5a]
         );
 
-        self.delay.delay(INIT_DELAY);
+        self.delay.borrow_mut().delay(INIT_DELAY);
         self.pmw_read(REG_MOTION, 1);
         self.pmw_read(REG_DELTA_X_L, 1);
         self.pmw_read(REG_DELTA_X_H, 1);
@@ -76,10 +76,10 @@ impl PmwDriver {
         self.disable_rest_mode();
 
         self.pmw_write(REG_SROM_ENABLE, vec![0x1d]);
-        self.delay.delay(SROM_ENABLE_DELAY);
+        self.delay.borrow_mut().delay(SROM_ENABLE_DELAY);
         self.pmw_write(REG_SROM_ENABLE, vec![0x18]);
         self.pmw_write(REG_SROM_LOAD_BURST, PMW_3360_FIRMWARE.to_vec());
-        self.delay.delay(SROM_DOWNLOAD_DELAY);
+        self.delay.borrow_mut().delay(SROM_DOWNLOAD_DELAY);
         self.pmw_write(REG_CONFIG_2, vec![0x00]);
     }
 
@@ -144,7 +144,7 @@ impl PmwDriver {
         self.spi.transfer(&mut [first_byte])
             .expect("Failed to transfer bytes over SPI1.");
 
-        self.delay.delay(READ_ADDRESS_DATA_DELAY);
+        self.delay.borrow_mut().delay(READ_ADDRESS_DATA_DELAY);
 
         let result = self.spi
             .transfer(&mut data)
