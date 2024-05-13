@@ -1,5 +1,5 @@
-use stm32f1xx_hal::gpio::{Floating, Input, Pin};
 use crate::button_data::ButtonData;
+use stm32f1xx_hal::gpio::{Floating, Input, Pin};
 
 pub struct ButtonDriver {
     left_click: Pin<'C', 3, Input<Floating>>,
@@ -20,7 +20,7 @@ impl ButtonDriver {
         }
     }
 
-    pub fn get_current_data(&self) -> ButtonData{
+    pub fn get_current_data(&self) -> ButtonData {
         ButtonData {
             left_click: self.left_click.is_low(),
             right_click: self.right_click.is_low(),

@@ -18,17 +18,14 @@ use core::alloc::Layout;
 use core::cell::RefCell;
 use panic_rtt_target as _;
 
+use crate::button_driver::ButtonDriver;
 use crate::pmw_driver::PmwDriver;
 use crate::usb_driver::UsbDriver;
 use cortex_m_rt::entry;
 use fugit::{HertzU32, MicrosDurationU32};
 use rtt_target::{rprintln, rtt_init_print};
 use stm32f1xx_hal::pac::{CorePeripherals, Peripherals};
-use stm32f1xx_hal::{
-    prelude::*,
-    usb,
-};
-use crate::button_driver::ButtonDriver;
+use stm32f1xx_hal::{prelude::*, usb};
 
 #[entry]
 fn main() -> ! {

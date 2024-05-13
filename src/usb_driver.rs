@@ -1,3 +1,4 @@
+use crate::button_data::ButtonData;
 use crate::motion_data::MotionData;
 use crate::mouse_report::MouseReport;
 use stm32_usbd::UsbBus;
@@ -5,7 +6,6 @@ use stm32f1xx_hal::usb;
 use usb_device::bus::UsbBusAllocator;
 use usb_device::prelude::*;
 use usbd_hid_device::Hid;
-use crate::button_data::ButtonData;
 
 const USB_CLASS_HID: u8 = 0x03;
 const POLL_TIME_MS: u8 = 5;
@@ -44,6 +44,8 @@ impl<'a> UsbDriver<'a> {
     }
 
     pub fn handle_data(&mut self, motion_data: MotionData, button_data: ButtonData) {
-        let _ = self.hid.send_report(&MouseReport::new(motion_data, button_data));
+        let _ = self
+            .hid
+            .send_report(&MouseReport::new(motion_data, button_data));
     }
 }
