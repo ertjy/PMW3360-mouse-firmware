@@ -1,5 +1,3 @@
-use alloc::vec;
-use alloc::vec::Vec;
 use fugit::MicrosDurationU32;
 
 pub const REG_MOTION: u8 = 0x02;
@@ -12,7 +10,6 @@ pub const REG_SROM_ENABLE: u8 = 0x13;
 pub const REG_MOTION_BURST: u8 = 0x50;
 pub const REG_SROM_LOAD_BURST: u8 = 0x62;
 pub const REG_POWER_UP_RESET: u8 = 0x3a;
-
 
 pub const READ_ADDRESS_DATA_DELAY: MicrosDurationU32 = MicrosDurationU32::micros(160);
 pub const INIT_DELAY: MicrosDurationU32 = MicrosDurationU32::millis(50);

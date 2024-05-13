@@ -2,47 +2,33 @@
 #![no_main]
 #![feature(alloc_error_handler)]
 
+pub mod button_data;
+pub mod button_driver;
 pub mod constants;
-pub mod pmw_driver;
-pub mod usb_driver;
 pub mod motion_data;
 pub mod mouse_report;
-pub mod button_driver;
+pub mod pmw_driver;
+pub mod usb_driver;
 
 extern crate alloc;
 
-use alloc::borrow::ToOwned;
 use alloc::rc::Rc;
-use alloc::vec;
-use alloc::vec::Vec;
 use alloc_cortex_m::CortexMHeap;
 use core::alloc::Layout;
 use core::cell::RefCell;
-use cortex_m::asm::delay;
-use cortex_m::peripheral::SYST;
 use panic_rtt_target as _;
 
-use crate::constants::{
-    INIT_DELAY, PMW_3360_FIRMWARE, REG_POWER_UP_RESET, READ_ADDRESS_DATA_DELAY, SROM_DOWNLOAD_DELAY,
-    SROM_ENABLE_DELAY,
-};
 use crate::pmw_driver::PmwDriver;
-use cortex_m_rt::entry;
-use fugit::{Duration, Hertz, HertzU32, MicrosDurationU32};
-use rtt_target::{rprint, rprintln, rtt_init_print};
-use stm32f1xx_hal::device::SPI1;
-use stm32f1xx_hal::gpio::{Alternate, Output, Pin};
-use stm32f1xx_hal::pac::{CorePeripherals, Peripherals};
-use stm32f1xx_hal::rcc::Clocks;
-use stm32f1xx_hal::spi::Spi1NoRemap;
-use stm32f1xx_hal::time::Hz;
-use stm32f1xx_hal::timer::{SysDelay, Timer};
-use stm32f1xx_hal::{prelude::*, spi::{Mode, Phase, Polarity, Spi}, usb};
-use crate::motion_data::MotionData;
 use crate::usb_driver::UsbDriver;
-
-type PmwSpi =
-    Spi<SPI1, Spi1NoRemap, (Pin<'A', 5, Alternate>, Pin<'A', 6>, Pin<'A', 7, Alternate>), u8>;
+use cortex_m_rt::entry;
+use fugit::{HertzU32, MicrosDurationU32};
+use rtt_target::{rprintln, rtt_init_print};
+use stm32f1xx_hal::pac::{CorePeripherals, Peripherals};
+use stm32f1xx_hal::{
+    prelude::*,
+    usb,
+};
+use crate::button_driver::ButtonDriver;
 
 #[entry]
 fn main() -> ! {
@@ -56,11 +42,14 @@ fn main() -> ! {
     let dp = Peripherals::take().unwrap();
 
     let mut flash = dp.FLASH.constrain();
-    let mut rcc = dp.RCC.constrain();
+    let rcc = dp.RCC.constrain();
     let mut afio = dp.AFIO.constrain();
     let mut gpioa = dp.GPIOA.split();
+    let mut gpioc = dp.GPIOC.split();
 
-    let clocks = rcc.cfgr.use_hse(HertzU32::MHz(8))
+    let clocks = rcc
+        .cfgr
+        .use_hse(HertzU32::MHz(8))
         .sysclk(HertzU32::MHz(72))
         .hclk(HertzU32::MHz(72))
         .pclk1(HertzU32::MHz(36))
@@ -68,6 +57,12 @@ fn main() -> ! {
         .freeze(&mut flash.acr);
 
     let delay = Rc::new(RefCell::new(cp.SYST.delay(&clocks)));
+
+    let button_driver = ButtonDriver::new(
+        gpioc.pc3.into_floating_input(&mut gpioc.crl),
+        gpioc.pc4.into_floating_input(&mut gpioc.crl),
+        gpioc.pc5.into_floating_input(&mut gpioc.crl),
+    );
 
     let mut pmw_driver = PmwDriver::new(
         gpioa.pa4.into_push_pull_output(&mut gpioa.crl),
@@ -93,21 +88,15 @@ fn main() -> ! {
     };
 
     let mut usb_driver = UsbDriver::new(usb_peripheral);
-    usb_driver.poll();
+    // usb_driver.poll();
 
-    // loop {
-    //     usb_driver.poll();
-    //     usb_driver.handle_motion_data(MotionData{
-    //         delta_x: 1,
-    //         delta_y: 0,
-    //     })
-    // }
     pmw_driver.enter_loop(|motion_data| {
-        // position_x += motion_data.delta_x as f32 / 65536f32;
-        // position_y += motion_data.delta_y as f32 / 65536f32;
-        rprintln!("{:?}", motion_data);
+        let button_data = button_driver.get_current_data();
+        // rprintln!("{:?}", motion_data);
+        rprintln!("{:?}", button_data);
+
+        usb_driver.handle_data(motion_data, button_data);
         usb_driver.poll();
-        usb_driver.handle_motion_data(motion_data);
     });
 }
 

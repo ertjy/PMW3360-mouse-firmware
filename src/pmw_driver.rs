@@ -1,21 +1,22 @@
+use crate::constants::{
+    INIT_DELAY, PMW_3360_FIRMWARE, READ_ADDRESS_DATA_DELAY, REG_CONFIG_2, REG_DELTA_X_H,
+    REG_DELTA_X_L, REG_DELTA_Y_H, REG_DELTA_Y_L, REG_MOTION, REG_MOTION_BURST, REG_POWER_UP_RESET,
+    REG_SROM_ENABLE, REG_SROM_LOAD_BURST, SROM_DOWNLOAD_DELAY, SROM_ENABLE_DELAY,
+};
+use crate::motion_data::MotionData;
 use alloc::borrow::ToOwned;
 use alloc::rc::Rc;
 use alloc::vec;
 use alloc::vec::Vec;
 use core::cell::RefCell;
-use cortex_m::delay::Delay;
-use cortex_m::peripheral::SYST;
 use cortex_m::prelude::_embedded_hal_blocking_spi_Transfer;
 use fugit::HertzU32;
-use rtt_target::rprintln;
 use stm32f1xx_hal::afio::MAPR;
 use stm32f1xx_hal::device::SPI1;
 use stm32f1xx_hal::gpio::{Alternate, Output, Pin};
 use stm32f1xx_hal::rcc::Clocks;
 use stm32f1xx_hal::spi::{Mode, Phase, Polarity, Spi, Spi1NoRemap};
-use stm32f1xx_hal::timer::{SysDelay, Timer};
-use crate::constants::{INIT_DELAY, REG_POWER_UP_RESET, READ_ADDRESS_DATA_DELAY, REG_MOTION, REG_DELTA_X_H, REG_DELTA_X_L, REG_DELTA_Y_L, REG_DELTA_Y_H, REG_SROM_ENABLE, SROM_ENABLE_DELAY, REG_SROM_LOAD_BURST, PMW_3360_FIRMWARE, SROM_DOWNLOAD_DELAY, REG_CONFIG_2, REG_MOTION_BURST};
-use crate::motion_data::MotionData;
+use stm32f1xx_hal::timer::SysDelay;
 
 pub type PmwCe = Pin<'A', 4, Output>;
 pub type PmwSck = Pin<'A', 5, Alternate>;
@@ -61,10 +62,7 @@ impl PmwDriver {
         self.delay.borrow_mut().delay(INIT_DELAY);
         self.chip_enable_pin.set_high();
 
-        self.pmw_write(
-            REG_POWER_UP_RESET,
-            vec![0x5a]
-        );
+        self.pmw_write(REG_POWER_UP_RESET, vec![0x5a]);
 
         self.delay.borrow_mut().delay(INIT_DELAY);
         self.pmw_read(REG_MOTION, 1);
@@ -91,48 +89,27 @@ impl PmwDriver {
         }
     }
 
-    fn enable_rest_mode(
-        &mut self
-    ) {
-        let mut config2 = self.pmw_read(0x10, 1);
-        config2[0] |= 1 << 5;
-        self.pmw_write(0x10, config2);
-    }
+    // fn enable_rest_mode(&mut self) {
+    //     let mut config2 = self.pmw_read(0x10, 1);
+    //     config2[0] |= 1 << 5;
+    //     self.pmw_write(0x10, config2);
+    // }
 
-    fn disable_rest_mode(
-        &mut self
-    ) {
+    fn disable_rest_mode(&mut self) {
         let mut config2 = self.pmw_read(0x10, 1);
         config2[0] &= !(1 << 5);
         self.pmw_write(0x10, config2);
     }
 
-    fn pmw_write(
-        &mut self,
-        address: u8,
-        data: Vec<u8>,
-    ) {
+    fn pmw_write(&mut self, address: u8, data: Vec<u8>) {
         self.pmw_transfer(true, address, data);
     }
 
-    fn pmw_read(
-        &mut self,
-        address: u8,
-        count: usize,
-    ) -> Vec<u8> {
-        self.pmw_transfer(
-            false,
-            address,
-            vec![0xff; count],
-        )
+    fn pmw_read(&mut self, address: u8, count: usize) -> Vec<u8> {
+        self.pmw_transfer(false, address, vec![0xff; count])
     }
 
-    fn pmw_transfer(
-        &mut self,
-        is_write: bool,
-        address: u8,
-        mut data: Vec<u8>,
-    ) -> Vec<u8> {
+    fn pmw_transfer(&mut self, is_write: bool, address: u8, mut data: Vec<u8>) -> Vec<u8> {
         let first_byte = if is_write {
             (1 << 7) | address
         } else {
@@ -141,12 +118,14 @@ impl PmwDriver {
 
         self.chip_enable_pin.set_low();
 
-        self.spi.transfer(&mut [first_byte])
+        self.spi
+            .transfer(&mut [first_byte])
             .expect("Failed to transfer bytes over SPI1.");
 
         self.delay.borrow_mut().delay(READ_ADDRESS_DATA_DELAY);
 
-        let result = self.spi
+        let result = self
+            .spi
             .transfer(&mut data)
             .expect("Failed to transfer bytes over SPI1.")
             .to_owned();
